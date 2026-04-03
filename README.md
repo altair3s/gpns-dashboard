@@ -1,70 +1,184 @@
-# Getting Started with Create React App
+# GPNS Dashboard
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Dashboard React connecté aux Google Sheets de suivi RH (Heures) et stock (Produits).
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## Stack
 
-### `npm start`
+| Outil | Rôle |
+|---|---|
+| Vite + React 18 | Bundler et framework UI |
+| React Router v6 | Navigation entre pages |
+| Recharts | Graphiques (bar, line, pie) |
+| Lucide React | Icônes |
+| Google Sheets API v4 | Source de données (lecture seule) |
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+---
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Structure du projet
 
-### `npm test`
+```
+gpns-dashboard/
+├── src/
+│   ├── api/
+│   │   ├── sheetsConfig.js   ← IDs des sheets + indices des colonnes
+│   │   ├── sheetsClient.js   ← Wrapper fetch (batchGet)
+│   │   ├── heuresApi.js      ← Récupère la feuille "global"
+│   │   └── stockApi.js       ← Récupère Produits / Entrées / Sorties
+│   ├── utils/
+│   │   ├── parseHeures.js    ← Calcule présences, motifs, heures, KPIs
+│   │   └── parseStock.js     ← Calcule stock réel, alertes, mouvements
+│   ├── hooks/
+│   │   ├── useHeures.js      ← State + fetch heures
+│   │   └── useStock.js       ← State + fetch stock
+│   ├── components/
+│   │   ├── layout/Sidebar.jsx
+│   │   ├── ui/index.jsx      ← KpiCard, Badge, ProgressBar, Loader
+│   │   ├── heures/index.jsx  ← PresencesChart, MotifsChart, MotifsTable…
+│   │   └── stock/index.jsx   ← GpnsTopChart, MouvementsChart, StockTable…
+│   ├── pages/
+│   │   ├── HeuresPage.jsx
+│   │   └── StockPage.jsx
+│   ├── App.jsx
+│   ├── main.jsx
+│   └── index.css
+├── index.html
+├── vite.config.js
+├── package.json
+└── .env.example
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+---
 
-### `npm run build`
+## 1. Prérequis Google Cloud
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Activer l'API
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+1. Aller sur [console.cloud.google.com](https://console.cloud.google.com)
+2. Créer ou sélectionner un projet
+3. Menu **APIs & Services → Library** → chercher **"Google Sheets API"** → Activer
+4. Menu **APIs & Services → Credentials** → **Create Credentials → API Key**
+5. Restreindre la clé : **API restrictions → Google Sheets API**
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Partager les Google Sheets
 
-### `npm run eject`
+Pour chaque feuille (Export/Heures et Produits) :
+- Ouvrir le fichier → **Partager** → **Tout le monde ayant le lien peut afficher**
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+> **Feuilles privées ?** Utiliser un Service Account et un proxy backend (voir section avancée).
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+---
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## 2. Configuration
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+```bash
+cp .env.example .env
+```
 
-## Learn More
+Remplir `.env` :
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```env
+VITE_GOOGLE_API_KEY=AIza...votre_cle
+VITE_SHEET_HEURES_ID=1abc...id_du_fichier_export
+VITE_SHEET_PRODUITS_ID=1xyz...id_du_fichier_produits
+VITE_FILIALE=GPNS
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+L'ID d'un fichier Google Sheets se trouve dans l'URL :
+```
+https://docs.google.com/spreadsheets/d/  →SPREADSHEET_ID←  /edit
+```
 
-### Code Splitting
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## 3. Installation et lancement
 
-### Analyzing the Bundle Size
+```bash
+npm install
+npm run dev
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+Ouvrir [http://localhost:5173](http://localhost:5173)
 
-### Making a Progressive Web App
+```bash
+# Build de production
+npm run build
+npm run preview
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+---
 
-### Advanced Configuration
+## 4. Correspondance colonnes → Google Sheets
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+### Feuille "global" (export heures)
 
-### Deployment
+La feuille a **2 lignes d'en-têtes groupées** avant la vraie ligne de colonnes (ligne 3).
+Le fetch démarre à `global!A3:AK`.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+| Colonne | Indice | Contenu |
+|---|---|---|
+| A | 0 | Badge |
+| B | 1 | Trigramme |
+| C | 2 | Nom |
+| D | 3 | Prénom |
+| E | 4 | Service |
+| F | 5 | Site |
+| G | 6 | Qualification |
+| H | 7 | 1ère tâche |
+| I | 8 | Jour (date) |
+| L | 11 | Motif |
+| O | 14 | Début prévisionnel |
+| P | 15 | Fin prévisionnel |
+| Q | 16 | **Durée prév.** (`07:00:00` \| `MAL` \| `CP` …) |
+| V | 21 | Durée badgeuse |
+| Y | 24 | Durée réalisée |
+| AB | 27 | **Travail effectif** (`0 days 07:30:00`) |
+| AC | 28 | H Sup |
+| AE | 30 | Anomalie |
 
-### `npm run build` fails to minify
+Les indices sont définis dans `src/api/sheetsConfig.js → HEURES_COLS` et peuvent être ajustés si la structure de votre feuille diffère.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### Feuilles Produits
+
+| Feuille | Colonnes |
+|---|---|
+| Produits | Id, Produit, Categorie, Image, Stock initial, Niveau réapro, Prix HT/Unit, Valeur |
+| Entrées | Timestamp, Date, Produit, Quantité, Client, Remarque, user |
+| Sorties | Timestamp, Date, Produit, Quantité, Client, Remarque, user |
+
+---
+
+## 5. Ajouter une nouvelle page
+
+1. Créer `src/pages/NomPage.jsx`
+2. Créer `src/hooks/useNom.js` + `src/api/nomApi.js` si besoin
+3. Ajouter l'entrée dans `src/components/layout/Sidebar.jsx`
+4. Ajouter la `<Route>` dans `src/App.jsx`
+
+---
+
+## 6. Service Account (feuilles privées)
+
+Si les Google Sheets sont privées (non partagées publiquement) :
+
+1. Créer un **Service Account** dans GCP → télécharger la clé JSON
+2. Partager chaque Sheet avec l'email du service account (Lecteur)
+3. Ne **pas** exposer la clé JSON côté client
+4. Créer un **proxy backend** (Node/Express ou Edge Function) qui :
+   - Reçoit les requêtes du frontend
+   - S'authentifie via la clé SA avec `google-auth-library`
+   - Retransmet à l'API Sheets
+5. Pointer `sheetsClient.js` vers votre proxy au lieu de `sheets.googleapis.com`
+
+---
+
+## 7. Personnalisation rapide
+
+| Besoin | Fichier |
+|---|---|
+| Changer la filiale filtrée | `.env → VITE_FILIALE` |
+| Ajouter un code d'absence | `src/utils/parseHeures.js → ABSENCE_CODES` |
+| Modifier les plages de cellules | `src/api/sheetsConfig.js → SHEETS` |
+| Changer les couleurs | `src/index.css → :root` |
+| Ajouter un graphique | `src/components/heures/index.jsx` ou `stock/index.jsx` |
